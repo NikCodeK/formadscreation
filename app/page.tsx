@@ -13,11 +13,13 @@ import {
   campaignGoals,
   CampaignBuilderFormState,
   VariantDetail,
+  targetAudienceCategory,
   mediaTypes,
   numericOptions,
   offers,
   phases,
   targetAudienceTypes,
+  targetUrls,
   VariantRow
 } from '@/lib/types';
 import { clearState, getStorageKey, loadState, saveState } from '@/lib/storage';
@@ -69,6 +71,7 @@ function createDefaultFormState(): CampaignBuilderFormState {
   const copys = DEFAULT_COPYS;
   const totalVariants = creatives * headlines * copys;
   const defaultAudience = targetAudienceTypes[0];
+  const defaultAudienceType = targetAudienceCategory[0];
   return {
     phase: phases[0]?.label ?? '',
     format: adFormats[0]?.label ?? '',
@@ -77,6 +80,9 @@ function createDefaultFormState(): CampaignBuilderFormState {
     cta: adCtas[0] ?? '',
     targetAudience: defaultAudience?.label ?? '',
     targetAudienceCode: defaultAudience?.code ?? '',
+    targetAudienceType: defaultAudienceType?.label ?? '',
+    targetAudienceTypeCode: defaultAudienceType?.code ?? '',
+    targetUrl: targetUrls[0] ?? '',
     country: COUNTRY,
     budget: 100,
     source: SOURCE,
@@ -96,6 +102,8 @@ type BaseErrors = Partial<
     | 'offer'
     | 'cta'
     | 'targetAudience'
+    | 'targetAudienceType'
+    | 'targetUrl'
     | 'budget'
     | 'creatives'
     | 'headlines'
@@ -140,6 +148,22 @@ export default function CampaignBuilderPage() {
         const matchedAudience = targetAudienceTypes.find((item) => item.label === merged.targetAudience);
         merged.targetAudienceCode = matchedAudience?.code ?? '';
       }
+      if (!merged.targetAudienceTypeCode) {
+        const matchedType = targetAudienceCategory.find((item) => item.label === merged.targetAudienceType);
+        merged.targetAudienceTypeCode = matchedType?.code ?? '';
+      }
+      if (!merged.targetAudienceType) {
+        merged.targetAudienceType = targetAudienceCategory[0]?.label ?? '';
+        merged.targetAudienceTypeCode = targetAudienceCategory[0]?.code ?? '';
+      } else {
+        const matchedType = targetAudienceCategory.find((item) => item.label === merged.targetAudienceType);
+        if (matchedType && matchedType.code !== merged.targetAudienceTypeCode) {
+          merged.targetAudienceTypeCode = matchedType.code;
+        }
+      }
+      if (!merged.targetUrl) {
+        merged.targetUrl = targetUrls[0] ?? '';
+      }
       setFormState(merged);
     }
     setShowErrors(false);
@@ -178,6 +202,24 @@ export default function CampaignBuilderPage() {
         ...prev,
         targetAudience: value,
         targetAudienceCode: matched?.code ?? ''
+      }));
+      return;
+    }
+
+    if (field === 'targetAudienceType') {
+      const matchedType = targetAudienceCategory.find((item) => item.label === value);
+      setFormState((prev) => ({
+        ...prev,
+        targetAudienceType: value,
+        targetAudienceTypeCode: matchedType?.code ?? ''
+      }));
+      return;
+    }
+
+    if (field === 'targetUrl') {
+      setFormState((prev) => ({
+        ...prev,
+        targetUrl: value
       }));
       return;
     }
@@ -261,6 +303,9 @@ export default function CampaignBuilderPage() {
         cta: formState.cta,
         targetAudience: formState.targetAudience,
         targetAudienceCode: formState.targetAudienceCode,
+        targetAudienceType: formState.targetAudienceType,
+        targetAudienceTypeCode: formState.targetAudienceTypeCode,
+        targetUrl: formState.targetUrl,
         country: formState.country,
         source: formState.source,
         budget: formState.budget,
@@ -349,6 +394,21 @@ export default function CampaignBuilderPage() {
         onChange={(value) => handleSelectChange('targetAudience', value)}
         error={showErrors ? validation.formErrors.targetAudience : undefined}
         helper={formState.targetAudienceCode ? `ID: ${formState.targetAudienceCode}` : undefined}
+      />
+      <SelectControl
+        label="Target Audience Type"
+        value={formState.targetAudienceType}
+        options={targetAudienceCategory.map((item) => item.label)}
+        onChange={(value) => handleSelectChange('targetAudienceType', value)}
+        helper={formState.targetAudienceTypeCode ? `Code: ${formState.targetAudienceTypeCode}` : undefined}
+      />
+      <SelectControl
+        label="Target URL"
+        value={formState.targetUrl}
+        options={targetUrls}
+        onChange={(value) => handleSelectChange('targetUrl', value)}
+        error={showErrors ? validation.formErrors.targetUrl : undefined}
+        helper={showErrors && validation.formErrors.targetUrl ? validation.formErrors.targetUrl : 'Ziellink für die Kampagne'}
       />
             <ReadOnlyField label="Country" value={formState.country} />
             <NumberField
@@ -490,7 +550,18 @@ export default function CampaignBuilderPage() {
                       </VariantMetaField>
                       <VariantMetaField label="CTA" value={variant.cta} />
                       <VariantMetaField label="Target Audience" value={variant.targetAudience} />
+                      <VariantMetaField label="Audience Type" value={variant.targetAudienceType} />
+                      <VariantMetaField label="Audience Type Code" value={variant.targetAudienceTypeCode} />
                       <VariantMetaField label="Target Audience ID" value={variant.targetAudienceCode} />
+                      <VariantMetaField label="Target URL">
+                        {variant.targetUrl ? (
+                          <a href={variant.targetUrl} target="_blank" rel="noreferrer" className="break-all text-blue-600 underline">
+                            {variant.targetUrl}
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </VariantMetaField>
                       <VariantMetaField label="Offer" value={variant.offer} />
                       <VariantMetaField label="Country" value={variant.country} />
                       <VariantMetaField label="Source" value={variant.source} />
@@ -520,8 +591,20 @@ export default function CampaignBuilderPage() {
               <dd className="font-medium text-slate-900">{formState.target}</dd>
             </div>
             <div className="flex justify-between">
+              <dt>Target Audience Type</dt>
+              <dd className="font-medium text-slate-900">{formState.targetAudienceType}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt>Audience Type Code</dt>
+              <dd className="font-medium text-slate-900">{formState.targetAudienceTypeCode || '—'}</dd>
+            </div>
+            <div className="flex justify-between">
               <dt>Target Audience ID</dt>
               <dd className="font-medium text-slate-900">{formState.targetAudienceCode || '—'}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt>Target URL</dt>
+              <dd className="font-medium text-slate-900">{formState.targetUrl || '—'}</dd>
             </div>
             <div className="flex justify-between">
               <dt>Total Variants</dt>
@@ -577,6 +660,12 @@ function validateForm(formState: CampaignBuilderFormState): ValidationResult {
   if (!formState.offer) formErrors.offer = 'Offer is required.';
   if (!formState.cta) formErrors.cta = 'CTA is required.';
   if (!formState.targetAudience) formErrors.targetAudience = 'Target audience is required.';
+  if (!formState.targetAudienceType) formErrors.targetAudienceType = 'Audience type is required.';
+  if (!formState.targetUrl) {
+    formErrors.targetUrl = 'Target URL is required.';
+  } else if (!isValidUrl(formState.targetUrl)) {
+    formErrors.targetUrl = 'Enter a valid https:// URL.';
+  }
   if (formState.budget === null || Number.isNaN(formState.budget) || formState.budget <= 0) {
     formErrors.budget = 'Provide a positive budget.';
   }
@@ -635,6 +724,9 @@ function generateVariants(state: CampaignBuilderFormState): VariantRow[] {
     cta: state.cta,
     targetAudience: state.targetAudience,
     targetAudienceCode: state.targetAudienceCode,
+    targetAudienceType: state.targetAudienceType,
+    targetAudienceTypeCode: state.targetAudienceTypeCode,
+    targetUrl: state.targetUrl,
     country: state.country,
     source: state.source,
     budget: state.budget

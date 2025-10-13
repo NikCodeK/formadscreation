@@ -57,6 +57,13 @@ export const targetAudienceTypes: OptionWithCode[] = [
   { label: 'IT-Entscheider 20052025', code: '40737305' }
 ];
 
+export const targetAudienceCategory: OptionWithCode[] = [
+  { label: 'Cold Audience', code: 'CA' },
+  { label: 'Retargeting', code: 'RT' },
+  { label: 'Predictive Audience', code: 'PA' },
+  { label: 'Cold + Retargeting', code: 'CART' }
+];
+
 export const leadGenFormCtas = [
   'VISIT_COMPANY_WEBSITE',
   'LEARN_MORE',
@@ -77,6 +84,13 @@ export const mediaTypes: OptionWithCode[] = [
 ];
 
 export const adCtas = ['DOWNLOAD', 'LEARN_MORE', 'REGISTER', 'SIGN_UP'];
+
+export const targetUrls = [
+  'https://clever-funding.de/danke-fuer-dein-interesse-5-schritte/',
+  'https://clever-funding.de/forschungszulage-webinar/',
+  'https://clever-funding.de/',
+  'https://clever-funding.de/forschungszulage-webinar/'
+];
 
 export const utmSources: OptionWithCode[] = [
   { label: 'linkedin', code: 'li' },
@@ -130,6 +144,9 @@ export interface CampaignBuilderFormState {
   cta: string;
   targetAudience: string;
   targetAudienceCode: string;
+  targetAudienceType: string;
+  targetAudienceTypeCode: string;
+  targetUrl: string;
   country: string;
   budget: number | null;
   source: string;
@@ -153,6 +170,9 @@ export interface VariantRow {
   cta: string;
   targetAudience: string;
   targetAudienceCode: string;
+  targetAudienceType: string;
+  targetAudienceTypeCode: string;
+  targetUrl: string;
   country: string;
   source: string;
   budget: number | null;
