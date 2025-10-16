@@ -346,11 +346,7 @@ export default function CampaignBuilderPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10 lg:flex-row lg:items-start">
       <div className="flex-1 space-y-6">
-        <Section
-          title="Campaign Builder"
-          subtitle="Configure a campaign row. Fields mirror the Excel builder."
-          countLabel={`Variants: ${totalVariants}`}
-        >
+        <Section title="Campaign Builder" countLabel={`Variants: ${totalVariants}`}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <SelectControl
               label="Phase"
@@ -446,21 +442,8 @@ export default function CampaignBuilderPage() {
               onChange={(value) => handleSelectChange('assetType', value)}
               error={showErrors ? validation.formErrors.assetType : undefined}
             />
-            <TextAreaField
-              label="Kombinatorik Output"
-              value={kombinatorikOutput}
-              readOnly
-              helper="Preview of the combined variants summary."
-            />
           </div>
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setShowErrors(true)}
-              className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
-            >
-              Validate Form
-            </button>
             <button
               type="button"
               onClick={handleReset}
@@ -637,14 +620,6 @@ export default function CampaignBuilderPage() {
           ) : showErrors && validation.hasErrors ? (
             <p className="text-xs text-rose-500">Bitte alle Pflichtfelder und Asset-Links prüfen.</p>
           ) : null}
-        </div>
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-          <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Helpers</h4>
-          <ul className="space-y-2 text-sm text-slate-600">
-            <li>Alt+click on selects to multi-open quick menus.</li>
-            <li>„Abschicken“ schreibt das JSON-Payload in die Konsole.</li>
-            <li>Form state persists locally; reset clears storage.</li>
-          </ul>
         </div>
       </aside>
     </div>
@@ -825,30 +800,6 @@ function TextField({
       />
       {helper ? <span className="text-xs text-slate-500">{helper}</span> : null}
       {error ? <span className="text-xs text-rose-500">{error}</span> : null}
-    </label>
-  );
-}
-
-function TextAreaField({
-  label,
-  value,
-  readOnly,
-  helper
-}: {
-  label: string;
-  value: string;
-  readOnly?: boolean;
-  helper?: string;
-}) {
-  return (
-    <label className="flex flex-col gap-2 md:col-span-2">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
-      <textarea
-        className="min-h-[120px] rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-        value={value}
-        readOnly={readOnly}
-      />
-      {helper ? <span className="text-xs text-slate-500">{helper}</span> : null}
     </label>
   );
 }
