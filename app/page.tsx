@@ -14,6 +14,7 @@ import {
   CampaignBuilderFormState,
   VariantDetail,
   targetAudienceCategory,
+  leadGenForms,
   mediaTypes,
   numericOptions,
   offers,
@@ -72,6 +73,7 @@ function createDefaultFormState(): CampaignBuilderFormState {
   const totalVariants = creatives * headlines * copys;
   const defaultAudience = targetAudienceTypes[0];
   const defaultAudienceType = targetAudienceCategory[0];
+  const defaultLeadGen = leadGenForms[0];
   return {
     phase: phases[0]?.label ?? '',
     format: adFormats[0]?.label ?? '',
@@ -83,6 +85,8 @@ function createDefaultFormState(): CampaignBuilderFormState {
     targetAudienceType: defaultAudienceType?.label ?? '',
     targetAudienceTypeCode: defaultAudienceType?.code ?? '',
     targetUrl: targetUrls[0] ?? '',
+    leadGenForm: defaultLeadGen?.label ?? '',
+    leadGenFormId: defaultLeadGen?.code ?? '',
     country: COUNTRY,
     budget: 100,
     source: SOURCE,
@@ -103,6 +107,7 @@ type BaseErrors = Partial<
     | 'cta'
     | 'targetAudience'
     | 'targetAudienceType'
+    | 'leadGenForm'
     | 'targetUrl'
     | 'budget'
     | 'creatives'
@@ -132,6 +137,19 @@ export default function CampaignBuilderPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitFeedback, setSubmitFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  const targetAudienceCodeMap = useMemo(
+    () => new Map(targetAudienceTypes.map(({ label, code }) => [label, code])),
+    []
+  );
+  const targetAudienceTypeCodeMap = useMemo(
+    () => new Map(targetAudienceCategory.map(({ label, code }) => [label, code])),
+    []
+  );
+  const leadGenFormIdMap = useMemo(
+    () => new Map(leadGenForms.map(({ label, code }) => [label, code])),
+    []
+  );
+
   useEffect(() => {
     const stored = loadState<CampaignBuilderFormState | null>(null, STORAGE_KEY);
     if (stored) {
@@ -144,31 +162,28 @@ export default function CampaignBuilderPage() {
       };
       const total = merged.creatives * merged.headlines * merged.copys;
       merged.variants = resizeVariantList(stored.variants ?? merged.variants, total);
-      if (!merged.targetAudienceCode) {
-        const matchedAudience = targetAudienceTypes.find((item) => item.label === merged.targetAudience);
-        merged.targetAudienceCode = matchedAudience?.code ?? '';
-      }
-      if (!merged.targetAudienceTypeCode) {
-        const matchedType = targetAudienceCategory.find((item) => item.label === merged.targetAudienceType);
-        merged.targetAudienceTypeCode = matchedType?.code ?? '';
-      }
+      merged.targetAudienceCode = targetAudienceCodeMap.get(merged.targetAudience) ?? '';
+      merged.targetAudienceTypeCode = targetAudienceTypeCodeMap.get(merged.targetAudienceType) ?? '';
       if (!merged.targetAudienceType) {
         merged.targetAudienceType = targetAudienceCategory[0]?.label ?? '';
         merged.targetAudienceTypeCode = targetAudienceCategory[0]?.code ?? '';
       } else {
-        const matchedType = targetAudienceCategory.find((item) => item.label === merged.targetAudienceType);
-        if (matchedType && matchedType.code !== merged.targetAudienceTypeCode) {
-          merged.targetAudienceTypeCode = matchedType.code;
-        }
+        merged.targetAudienceTypeCode =
+          targetAudienceTypeCodeMap.get(merged.targetAudienceType) ?? merged.targetAudienceTypeCode ?? '';
       }
       if (!merged.targetUrl) {
         merged.targetUrl = targetUrls[0] ?? '';
+      }
+      merged.leadGenForm = merged.leadGenForm || leadGenForms[0]?.label || '';
+      merged.leadGenFormId = leadGenFormIdMap.get(merged.leadGenForm) ?? leadGenForms[0]?.code ?? '';
+      if (!merged.leadGenForm) {
+        merged.leadGenForm = leadGenForms[0] ?? '';
       }
       setFormState(merged);
     }
     setShowErrors(false);
     setHydrated(true);
-  }, []);
+  }, [targetAudienceCodeMap, targetAudienceTypeCodeMap, leadGenFormIdMap]);
 
   useEffect(() => {
     if (!hydrated) {
@@ -197,21 +212,19 @@ export default function CampaignBuilderPage() {
 
   const handleSelectChange = <Key extends keyof CampaignBuilderFormState>(field: Key, value: string) => {
     if (field === 'targetAudience') {
-      const matched = targetAudienceTypes.find((item) => item.label === value);
       setFormState((prev) => ({
         ...prev,
         targetAudience: value,
-        targetAudienceCode: matched?.code ?? ''
+        targetAudienceCode: targetAudienceCodeMap.get(value) ?? ''
       }));
       return;
     }
 
     if (field === 'targetAudienceType') {
-      const matchedType = targetAudienceCategory.find((item) => item.label === value);
       setFormState((prev) => ({
         ...prev,
         targetAudienceType: value,
-        targetAudienceTypeCode: matchedType?.code ?? ''
+        targetAudienceTypeCode: targetAudienceTypeCodeMap.get(value) ?? ''
       }));
       return;
     }
@@ -220,6 +233,15 @@ export default function CampaignBuilderPage() {
       setFormState((prev) => ({
         ...prev,
         targetUrl: value
+      }));
+      return;
+    }
+
+    if (field === 'leadGenForm') {
+      setFormState((prev) => ({
+        ...prev,
+        leadGenForm: value,
+        leadGenFormId: leadGenFormIdMap.get(value) ?? ''
       }));
       return;
     }
@@ -306,6 +328,8 @@ export default function CampaignBuilderPage() {
         targetAudienceType: formState.targetAudienceType,
         targetAudienceTypeCode: formState.targetAudienceTypeCode,
         targetUrl: formState.targetUrl,
+        leadGenForm: formState.leadGenForm,
+        leadGenFormId: formState.leadGenFormId,
         country: formState.country,
         source: formState.source,
         budget: formState.budget,
@@ -389,14 +413,13 @@ export default function CampaignBuilderPage() {
         options={targetAudienceTypes.map((item) => item.label)}
         onChange={(value) => handleSelectChange('targetAudience', value)}
         error={showErrors ? validation.formErrors.targetAudience : undefined}
-        helper={formState.targetAudienceCode ? `ID: ${formState.targetAudienceCode}` : undefined}
       />
       <SelectControl
         label="Target Audience Type"
         value={formState.targetAudienceType}
         options={targetAudienceCategory.map((item) => item.label)}
         onChange={(value) => handleSelectChange('targetAudienceType', value)}
-        helper={formState.targetAudienceTypeCode ? `Code: ${formState.targetAudienceTypeCode}` : undefined}
+        error={showErrors ? validation.formErrors.targetAudienceType : undefined}
       />
       <SelectControl
         label="Target URL"
@@ -404,7 +427,13 @@ export default function CampaignBuilderPage() {
         options={targetUrls}
         onChange={(value) => handleSelectChange('targetUrl', value)}
         error={showErrors ? validation.formErrors.targetUrl : undefined}
-        helper={showErrors && validation.formErrors.targetUrl ? validation.formErrors.targetUrl : 'Ziellink für die Kampagne'}
+      />
+      <SelectControl
+        label="Lead Gen Form"
+        value={formState.leadGenForm}
+        options={leadGenForms.map((item) => item.label)}
+        onChange={(value) => handleSelectChange('leadGenForm', value)}
+        error={showErrors ? validation.formErrors.leadGenForm : undefined}
       />
             <ReadOnlyField label="Country" value={formState.country} />
             <NumberField
@@ -545,6 +574,8 @@ export default function CampaignBuilderPage() {
                           '—'
                         )}
                       </VariantMetaField>
+                      <VariantMetaField label="Lead Gen Form" value={variant.leadGenForm} />
+                      <VariantMetaField label="Lead Gen Form ID" value={variant.leadGenFormId} />
                       <VariantMetaField label="Offer" value={variant.offer} />
                       <VariantMetaField label="Country" value={variant.country} />
                       <VariantMetaField label="Source" value={variant.source} />
@@ -588,6 +619,14 @@ export default function CampaignBuilderPage() {
             <div className="flex justify-between">
               <dt>Target URL</dt>
               <dd className="font-medium text-slate-900">{formState.targetUrl || '—'}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt>Lead Gen Form</dt>
+              <dd className="font-medium text-slate-900">{formState.leadGenForm}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt>Lead Gen Form ID</dt>
+              <dd className="font-medium text-slate-900">{formState.leadGenFormId || '—'}</dd>
             </div>
             <div className="flex justify-between">
               <dt>Total Variants</dt>
@@ -641,6 +680,7 @@ function validateForm(formState: CampaignBuilderFormState): ValidationResult {
   } else if (!isValidUrl(formState.targetUrl)) {
     formErrors.targetUrl = 'Enter a valid https:// URL.';
   }
+  if (!formState.leadGenForm) formErrors.leadGenForm = 'Lead gen form is required.';
   if (formState.budget === null || Number.isNaN(formState.budget) || formState.budget <= 0) {
     formErrors.budget = 'Provide a positive budget.';
   }
@@ -702,6 +742,8 @@ function generateVariants(state: CampaignBuilderFormState): VariantRow[] {
     targetAudienceType: state.targetAudienceType,
     targetAudienceTypeCode: state.targetAudienceTypeCode,
     targetUrl: state.targetUrl,
+    leadGenForm: state.leadGenForm,
+    leadGenFormId: state.leadGenFormId,
     country: state.country,
     source: state.source,
     budget: state.budget

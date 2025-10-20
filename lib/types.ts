@@ -64,12 +64,9 @@ export const targetAudienceCategory: OptionWithCode[] = [
   { label: 'Cold + Retargeting', code: 'CART' }
 ];
 
-export const leadGenFormCtas = [
-  'VISIT_COMPANY_WEBSITE',
-  'LEARN_MORE',
-  'VIEW_NOW',
-  'DOWNLOAD_NOW',
-  'TRY_NOW'
+export const leadGenForms: OptionWithCode[] = [
+  { label: 'lgf002', code: '13588364' },
+  { label: 'lgf003', code: '13591544' }
 ];
 
 export const mediaTypes: OptionWithCode[] = [
@@ -147,6 +144,8 @@ export interface CampaignBuilderFormState {
   targetAudienceType: string;
   targetAudienceTypeCode: string;
   targetUrl: string;
+  leadGenForm: string;
+  leadGenFormId: string;
   country: string;
   budget: number | null;
   source: string;
@@ -173,6 +172,8 @@ export interface VariantRow {
   targetAudienceType: string;
   targetAudienceTypeCode: string;
   targetUrl: string;
+  leadGenForm: string;
+  leadGenFormId: string;
   country: string;
   source: string;
   budget: number | null;
