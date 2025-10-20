@@ -176,9 +176,6 @@ export default function CampaignBuilderPage() {
       }
       merged.leadGenForm = merged.leadGenForm || leadGenForms[0]?.label || '';
       merged.leadGenFormId = leadGenFormIdMap.get(merged.leadGenForm) ?? leadGenForms[0]?.code ?? '';
-      if (!merged.leadGenForm) {
-        merged.leadGenForm = leadGenForms[0] ?? '';
-      }
       setFormState(merged);
     }
     setShowErrors(false);
