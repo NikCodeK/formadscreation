@@ -36,6 +36,8 @@ const DEFAULT_LEADGEN_WEBHOOK_URL = 'https://cleverfunding.app.n8n.cloud/webhook
 const LEADGEN_WEBHOOK_URL = process.env.NEXT_PUBLIC_LEADGEN_WEBHOOK_URL ?? DEFAULT_LEADGEN_WEBHOOK_URL;
 const DEFAULT_LEADGEN_WEBHOOK_TOKEN = 'n8n_ingest_7e2f4a913c8d4fb1b1d51b64b83a92c1';
 const LEADGEN_WEBHOOK_TOKEN = process.env.NEXT_PUBLIC_N8N_TOKEN ?? DEFAULT_LEADGEN_WEBHOOK_TOKEN;
+const DEFAULT_LEADGEN_WEBHOOK_METHOD = 'POST';
+const LEADGEN_WEBHOOK_METHOD = (process.env.NEXT_PUBLIC_LEADGEN_WEBHOOK_METHOD ?? DEFAULT_LEADGEN_WEBHOOK_METHOD).toUpperCase();
 
 const DEFAULT_CREATIVES = 2;
 const DEFAULT_HEADLINES = 2;
@@ -490,24 +492,52 @@ export default function CampaignBuilderPage() {
     };
 
     try {
-      const sendLeadGenRequest = (url: string) => {
+      const sendLeadGenRequest = (url: string, method: string) => {
+        const normalizedMethod = method.toUpperCase();
+        const supportsBody = normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD';
         const headers: Record<string, string> = {
           'Content-Type': 'application/json'
         };
         if (LEADGEN_WEBHOOK_TOKEN) {
           headers.Authorization = `Bearer ${LEADGEN_WEBHOOK_TOKEN}`;
         }
-        return fetch(url, {
-          method: 'POST',
+
+        let requestUrl = url;
+        let body: string | undefined;
+        if (supportsBody) {
+          body = JSON.stringify(payload);
+        } else {
+          try {
+            const urlObject = new URL(url);
+            urlObject.searchParams.set('payload', JSON.stringify(payload));
+            requestUrl = urlObject.toString();
+          } catch {
+            // Fallback for environments where URL parsing fails
+            requestUrl = `${url}${url.includes('?') ? '&' : '?'}payload=${encodeURIComponent(
+              JSON.stringify(payload)
+            )}`;
+          }
+        }
+
+        return fetch(requestUrl, {
+          method: normalizedMethod,
           headers,
-          body: JSON.stringify(payload)
+          body
         });
       };
 
-      let response = await sendLeadGenRequest(LEADGEN_WEBHOOK_URL);
-      if (response.status === 404 && LEADGEN_WEBHOOK_URL.includes('/webhook-test/')) {
-        const fallbackUrl = LEADGEN_WEBHOOK_URL.replace('/webhook-test/', '/webhook/');
-        response = await sendLeadGenRequest(fallbackUrl);
+      let activeUrl = LEADGEN_WEBHOOK_URL;
+      let activeMethod = LEADGEN_WEBHOOK_METHOD;
+      let response = await sendLeadGenRequest(activeUrl, activeMethod);
+
+      if (response.status === 404 && activeUrl.includes('/webhook-test/')) {
+        activeUrl = activeUrl.replace('/webhook-test/', '/webhook/');
+        response = await sendLeadGenRequest(activeUrl, activeMethod);
+      }
+
+      if (response.status === 405 && activeMethod !== 'GET') {
+        activeMethod = 'GET';
+        response = await sendLeadGenRequest(activeUrl, activeMethod);
       }
 
       if (!response.ok) {
