@@ -6,7 +6,7 @@
  */
 'use client';
 
-import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, MouseEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   adCtas,
   adFormats,
@@ -708,11 +708,7 @@ export default function CampaignBuilderPage() {
       setLeadGenDraft(newDraft);
       setLeadGenStatus('success');
       setLeadGenSubmitFeedback({ type: 'success', message: successMessage });
-
-      setTimeout(() => {
-        setIsLeadGenModalOpen(false);
-        setLeadGenSubmitFeedback(null);
-      }, 1500);
+      setIsLeadGenModalOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Leadgen-Webhook.';
       reportLeadGenError(message);
@@ -1146,10 +1142,34 @@ export default function CampaignBuilderPage() {
 }
 
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
+
+  const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-      <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-card">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+      onMouseDown={handleBackdropClick}
+    >
+      <div
+        className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-card"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-slate-900">Leadgen Form erstellen</h3>
           <button
