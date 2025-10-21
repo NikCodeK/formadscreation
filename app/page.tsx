@@ -173,6 +173,7 @@ export default function CampaignBuilderPage() {
     () => new Map(targetAudienceCategory.map(({ label, code }) => [label, code])),
     []
   );
+  const targetUrlOptions = useMemo(() => Array.from(new Set(targetUrls)), []);
   const leadGenFormOptions = useMemo(() => [...leadGenForms, ...customLeadGenForms], [customLeadGenForms]);
   const leadGenFormIdMap = useMemo(
     () => new Map(leadGenFormOptions.map(({ label, code }) => [label, code])),
@@ -613,7 +614,7 @@ export default function CampaignBuilderPage() {
       <SelectControl
         label="Target URL"
         value={formState.targetUrl}
-        options={targetUrls}
+        options={targetUrlOptions}
         onChange={(value) => handleSelectChange('targetUrl', value)}
         error={showErrors ? validation.formErrors.targetUrl : undefined}
       />
@@ -1102,8 +1103,8 @@ function SelectControl({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        {options.map((option) => (
-          <option key={option} value={option}>
+        {options.map((option, index) => (
+          <option key={`${option}-${index}`} value={option}>
             {option}
           </option>
         ))}
