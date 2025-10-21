@@ -166,6 +166,7 @@ export default function CampaignBuilderPage() {
   const [leadGenSubmitFeedback, setLeadGenSubmitFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [customLeadGenForms, setCustomLeadGenForms] = useState<OptionWithCode[]>([]);
   const isLeadGenWebhookConfigured = Boolean(LEADGEN_WEBHOOK_URL);
+  const [leadGenStatus, setLeadGenStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
 
   const targetAudienceCodeMap = useMemo(
     () => new Map(targetAudienceTypes.map(({ label, code }) => [label, code])),
@@ -181,6 +182,36 @@ export default function CampaignBuilderPage() {
     () => new Map(leadGenFormOptions.map(({ label, code }) => [label, code])),
     [leadGenFormOptions]
   );
+  const leadGenTicker = useMemo(() => {
+    if (leadGenStatus === 'sending') {
+      return {
+        label: 'Sending…',
+        wrapper: 'border-rose-200 bg-rose-50 text-rose-600',
+        dot: 'bg-rose-500'
+      };
+    }
+    if (leadGenStatus === 'success') {
+      return {
+        label: 'Successfully created',
+        wrapper: 'border-emerald-200 bg-emerald-50 text-emerald-600',
+        dot: 'bg-emerald-500'
+      };
+    }
+    if (leadGenStatus === 'error') {
+      const message =
+        leadGenSubmitFeedback?.message ?? 'Send failed';
+      return {
+        label: message,
+        wrapper: 'border-rose-200 bg-rose-50 text-rose-600',
+        dot: 'bg-rose-500'
+      };
+    }
+    return {
+      label: 'Not in use',
+      wrapper: 'border-slate-200 bg-slate-100 text-slate-600',
+      dot: 'bg-slate-400'
+    };
+  }, [leadGenStatus, leadGenSubmitFeedback]);
 
   const updateLeadGenDraft = useCallback(
     (updates: Partial<LeadGenFormDraft>) => {
@@ -275,6 +306,13 @@ export default function CampaignBuilderPage() {
   const hasLeadGenInfo = useMemo(
     () => Object.values(leadGenInfo).some((value) => Boolean(value && String(value).trim())),
     [leadGenInfo]
+  );
+  const reportLeadGenError = useCallback(
+    (message: string) => {
+      setLeadGenSubmitFeedback({ type: 'error', message });
+      setLeadGenStatus('error');
+    },
+    [setLeadGenStatus, setLeadGenSubmitFeedback]
   );
 
   useEffect(() => {
@@ -447,30 +485,31 @@ export default function CampaignBuilderPage() {
     setLeadGenSubmitFeedback(null);
 
     if (!LEADGEN_WEBHOOK_URL) {
-      setLeadGenSubmitFeedback({ type: 'error', message: 'Kein Leadgen-WebHook konfiguriert.' });
+      reportLeadGenError('Kein Leadgen-WebHook konfiguriert.');
       return;
     }
 
     if (!leadGenDraft.title.trim()) {
-      setLeadGenSubmitFeedback({ type: 'error', message: 'Bitte einen Titel für das Leadgen-Formular angeben.' });
+      reportLeadGenError('Bitte einen Titel für das Leadgen-Formular angeben.');
       return;
     }
 
     if (!leadGenDraft.targetLink.trim()) {
-      setLeadGenSubmitFeedback({ type: 'error', message: 'Bitte einen Ziellink für das Leadgen-Formular angeben.' });
+      reportLeadGenError('Bitte einen Ziellink für das Leadgen-Formular angeben.');
       return;
     }
 
     if (!isValidUrl(leadGenDraft.targetLink)) {
-      setLeadGenSubmitFeedback({ type: 'error', message: 'Bitte einen gültigen Ziellink (https://) angeben.' });
+      reportLeadGenError('Bitte einen gültigen Ziellink (https://) angeben.');
       return;
     }
 
     if (leadGenDraft.imageLink && !isValidUrl(leadGenDraft.imageLink)) {
-      setLeadGenSubmitFeedback({ type: 'error', message: 'Bitte einen gültigen Bildlink (https://) angeben.' });
+      reportLeadGenError('Bitte einen gültigen Bildlink (https://) angeben.');
       return;
     }
 
+    setLeadGenStatus('sending');
     setIsLeadGenSubmitting(true);
 
     const draftPayload: LeadGenFormDraft = {
@@ -571,6 +610,7 @@ export default function CampaignBuilderPage() {
         leadGenFormDraft: newDraft
       }));
       setLeadGenDraft(newDraft);
+      setLeadGenStatus('success');
       setLeadGenSubmitFeedback({ type: 'success', message: 'Leadgen Form erfolgreich erstellt.' });
 
       setTimeout(() => {
@@ -579,7 +619,7 @@ export default function CampaignBuilderPage() {
       }, 1500);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Leadgen-Webhook.';
-      setLeadGenSubmitFeedback({ type: 'error', message });
+      reportLeadGenError(message);
     } finally {
       setIsLeadGenSubmitting(false);
     }
@@ -866,12 +906,19 @@ export default function CampaignBuilderPage() {
               });
               setLeadGenSubmitFeedback(null);
               setIsLeadGenSubmitting(false);
+              setLeadGenStatus('idle');
               setIsLeadGenModalOpen(true);
             }}
             className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
           >
             Leadgen Form erstellen
           </button>
+          <div
+            className={`mt-2 inline-flex min-h-[32px] w-full items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${leadGenTicker.wrapper}`}
+          >
+            <span className={`h-2 w-2 rounded-full ${leadGenTicker.dot}`} />
+            <span className="flex-1 text-left">{leadGenTicker.label}</span>
+          </div>
           <button
             type="button"
             onClick={handleSubmit}
@@ -959,12 +1006,13 @@ export default function CampaignBuilderPage() {
           <button
             type="button"
             className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
-            onClick={() =>
+            onClick={() => {
               resetLeadGenDraft({
                 ...createEmptyLeadGenDraft(),
                 phase: formState.phase
-              })
-            }
+              });
+              setLeadGenStatus('idle');
+            }}
           >
             Zurücksetzen
           </button>
