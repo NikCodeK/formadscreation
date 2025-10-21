@@ -6,7 +6,7 @@
  */
 'use client';
 
-import { ChangeEvent, MouseEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   adCtas,
   adFormats,
@@ -169,7 +169,7 @@ export default function CampaignBuilderPage() {
   const [leadGenStatus, setLeadGenStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const logLeadGenDebug = useCallback((label: string, data?: unknown) => {
     // eslint-disable-next-line no-console
-    console.debug(`[leadgen] ${label}`, data);
+    console.log(`[leadgen] ${label}`, data);
   }, []);
 
   const targetAudienceCodeMap = useMemo(
@@ -574,11 +574,16 @@ export default function CampaignBuilderPage() {
           headers,
           body
         }).then((response) => {
+          const headers: Record<string, string> = {};
+          response.headers.forEach((value, key) => {
+            headers[key] = value;
+          });
           logLeadGenDebug('response-meta', {
             url: requestUrl,
             method: normalizedMethod,
             status: response.status,
-            statusText: response.statusText
+            statusText: response.statusText,
+            headers
           });
           return response;
         });
@@ -607,8 +612,14 @@ export default function CampaignBuilderPage() {
         throw new Error(errorText || `Leadgen-Webhook antwortete mit einem Fehler${statusInfo}.`);
       }
 
-      const result = await response.json().catch(() => ({}));
-      logLeadGenDebug('response-body', result);
+      let parsedBody: unknown = {};
+      try {
+        parsedBody = await response.json();
+        logLeadGenDebug('response-body', parsedBody);
+      } catch (parseError) {
+        logLeadGenDebug('response-json-parse-error', parseError);
+        parsedBody = {};
+      }
 
       const interpretIngestResponse = (
         payload: unknown
@@ -685,15 +696,16 @@ export default function CampaignBuilderPage() {
         return { success: false, message: fallbackMessage, metaStatus: fallbackStatus };
       };
 
-      const interpreted = interpretIngestResponse(result);
+      const interpreted = interpretIngestResponse(parsedBody);
+      logLeadGenDebug('response-interpreted', interpreted);
       if (!interpreted.success) {
         const statusSuffix = interpreted.metaStatus ? ` (${interpreted.metaStatus})` : '';
         const message =
           interpreted.message ??
-          (Array.isArray(result) && result.length === 0
+          (Array.isArray(parsedBody) && parsedBody.length === 0
             ? 'Leadgen-Webhook lieferte keine Daten.'
             : 'Leadgen-Webhook meldete keinen Erfolg.');
-        logLeadGenDebug('interpreted-failure', { interpreted, raw: result });
+        logLeadGenDebug('interpreted-failure', { interpreted, raw: parsedBody });
         throw new Error(`${message}${statusSuffix}`);
       }
 
@@ -702,13 +714,48 @@ export default function CampaignBuilderPage() {
           ? interpreted.message
           : 'Leadgen Form erfolgreich erstellt.';
 
+      const resolvedResult =
+        Array.isArray(parsedBody)
+          ? (() => {
+              const withBody = parsedBody.find(
+                (item) => item && typeof item === 'object' && 'body' in (item as Record<string, unknown>)
+              ) as { body?: Record<string, unknown> } | undefined;
+              if (withBody?.body && typeof withBody.body === 'object') {
+                return withBody.body;
+              }
+              const firstObject = parsedBody.find((item) => item && typeof item === 'object') as
+                | Record<string, unknown>
+                | undefined;
+              return firstObject;
+            })()
+          : (parsedBody as Record<string, unknown> | undefined);
+
+      logLeadGenDebug('response-resolved', resolvedResult);
+
+      const resolvedLeadGenForm =
+        resolvedResult && typeof resolvedResult.leadGenForm === 'object' && resolvedResult.leadGenForm !== null
+          ? (resolvedResult.leadGenForm as Record<string, unknown>)
+          : undefined;
+
       const newFormLabel =
-        result?.leadGenForm?.label ?? result?.label ?? formState.leadGenForm ?? `LeadGen ${Date.now()}`;
+        (resolvedLeadGenForm && typeof resolvedLeadGenForm.label === 'string'
+          ? String(resolvedLeadGenForm.label)
+          : null) ??
+        (typeof resolvedResult?.label === 'string' ? resolvedResult.label : null) ??
+        formState.leadGenForm ??
+        `LeadGen ${Date.now()}`;
       const newFormId =
-        result?.leadGenForm?.id ?? result?.code ?? formState.leadGenFormId ?? `${Date.now()}`;
+        (resolvedLeadGenForm && typeof resolvedLeadGenForm.id === 'string'
+          ? String(resolvedLeadGenForm.id)
+          : null) ??
+        (typeof resolvedResult?.code === 'string' ? resolvedResult.code : null) ??
+        formState.leadGenFormId ??
+        `${Date.now()}`;
       const newDraft: LeadGenFormDraft = {
         ...draftPayload,
-        ...(result?.leadGenFormDraft ?? {})
+        ...(resolvedResult?.leadGenFormDraft && typeof resolvedResult.leadGenFormDraft === 'object'
+          ? (resolvedResult.leadGenFormDraft as Partial<LeadGenFormDraft>)
+          : {})
       };
 
       setCustomLeadGenForms((prev) => {
@@ -732,7 +779,7 @@ export default function CampaignBuilderPage() {
       setIsLeadGenModalOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Leadgen-Webhook.';
-      logLeadGenDebug('submission-error', { error });
+      logLeadGenDebug('submission-error', { error, message });
       reportLeadGenError(message);
     } finally {
       setIsLeadGenSubmitting(false);
@@ -1130,15 +1177,12 @@ export default function CampaignBuilderPage() {
           >
             Zurücksetzen
           </button>
-          {leadGenSubmitFeedback ? (
-            <span
-              className={`self-center text-xs ${
-                leadGenSubmitFeedback.type === 'success' ? 'text-emerald-600' : 'text-rose-500'
-              }`}
-            >
-              {leadGenSubmitFeedback.message}
-            </span>
-          ) : null}
+          <div
+            className={`inline-flex min-h-[32px] items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${leadGenTicker.wrapper}`}
+          >
+            <span className={`h-2 w-2 rounded-full ${leadGenTicker.dot}`} />
+            <span>{leadGenTicker.label}</span>
+          </div>
           <button
             type="button"
             className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-400"
