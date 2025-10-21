@@ -167,6 +167,10 @@ export default function CampaignBuilderPage() {
   const [customLeadGenForms, setCustomLeadGenForms] = useState<OptionWithCode[]>([]);
   const isLeadGenWebhookConfigured = Boolean(LEADGEN_WEBHOOK_URL);
   const [leadGenStatus, setLeadGenStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const logLeadGenDebug = useCallback((label: string, data?: unknown) => {
+    // eslint-disable-next-line no-console
+    console.debug(`[leadgen] ${label}`, data);
+  }, []);
 
   const targetAudienceCodeMap = useMemo(
     () => new Map(targetAudienceTypes.map(({ label, code }) => [label, code])),
@@ -535,6 +539,7 @@ export default function CampaignBuilderPage() {
     };
 
     try {
+      logLeadGenDebug('submission-started', { payload });
       const sendLeadGenRequest = (url: string, method: string) => {
         const normalizedMethod = method.toUpperCase();
         const supportsBody = normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD';
@@ -562,10 +567,20 @@ export default function CampaignBuilderPage() {
           }
         }
 
+        logLeadGenDebug('request-dispatch', { url: requestUrl, method: normalizedMethod, supportsBody });
+
         return fetch(requestUrl, {
           method: normalizedMethod,
           headers,
           body
+        }).then((response) => {
+          logLeadGenDebug('response-meta', {
+            url: requestUrl,
+            method: normalizedMethod,
+            status: response.status,
+            statusText: response.statusText
+          });
+          return response;
         });
       };
 
@@ -574,11 +589,13 @@ export default function CampaignBuilderPage() {
       let response = await sendLeadGenRequest(activeUrl, activeMethod);
 
       if (response.status === 404 && activeUrl.includes('/webhook-test/')) {
+        logLeadGenDebug('fallback-webhook-url', { from: activeUrl, to: activeUrl.replace('/webhook-test/', '/webhook/') });
         activeUrl = activeUrl.replace('/webhook-test/', '/webhook/');
         response = await sendLeadGenRequest(activeUrl, activeMethod);
       }
 
       if (response.status === 405 && activeMethod !== 'GET') {
+        logLeadGenDebug('method-retry', { previousMethod: activeMethod, nextMethod: 'GET' });
         activeMethod = 'GET';
         response = await sendLeadGenRequest(activeUrl, activeMethod);
       }
@@ -586,10 +603,12 @@ export default function CampaignBuilderPage() {
       if (!response.ok) {
         const errorText = await response.text();
         const statusInfo = response.status ? ` (Status ${response.status})` : '';
+        logLeadGenDebug('response-error', { status: response.status, statusText: response.statusText, body: errorText });
         throw new Error(errorText || `Leadgen-Webhook antwortete mit einem Fehler${statusInfo}.`);
       }
 
       const result = await response.json().catch(() => ({}));
+      logLeadGenDebug('response-body', result);
 
       const interpretIngestResponse = (
         payload: unknown
@@ -674,6 +693,7 @@ export default function CampaignBuilderPage() {
           (Array.isArray(result) && result.length === 0
             ? 'Leadgen-Webhook lieferte keine Daten.'
             : 'Leadgen-Webhook meldete keinen Erfolg.');
+        logLeadGenDebug('interpreted-failure', { interpreted, raw: result });
         throw new Error(`${message}${statusSuffix}`);
       }
 
@@ -708,9 +728,11 @@ export default function CampaignBuilderPage() {
       setLeadGenDraft(newDraft);
       setLeadGenStatus('success');
       setLeadGenSubmitFeedback({ type: 'success', message: successMessage });
+      logLeadGenDebug('submission-success', { successMessage, newFormLabel, newFormId });
       setIsLeadGenModalOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Leadgen-Webhook.';
+      logLeadGenDebug('submission-error', { error });
       reportLeadGenError(message);
     } finally {
       setIsLeadGenSubmitting(false);
