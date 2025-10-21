@@ -146,6 +146,7 @@ export interface CampaignBuilderFormState {
   targetUrl: string;
   leadGenForm: string;
   leadGenFormId: string;
+  leadGenFormDraft: LeadGenFormDraft;
   country: string;
   budget: number | null;
   source: string;
@@ -174,7 +175,19 @@ export interface VariantRow {
   targetUrl: string;
   leadGenForm: string;
   leadGenFormId: string;
+  leadGenFormDraft: LeadGenFormDraft;
   country: string;
   source: string;
   budget: number | null;
+}
+
+export interface LeadGenFormDraft {
+  phase: string;
+  imageId: string;
+  imageLink: string;
+  title: string;
+  detail: string;
+  thankYouMessage: string;
+  cta: string;
+  targetLink: string;
 }

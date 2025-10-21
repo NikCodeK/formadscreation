@@ -6,12 +6,14 @@
  */
 'use client';
 
-import { ChangeEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   adCtas,
   adFormats,
   campaignGoals,
   CampaignBuilderFormState,
+  type LeadGenFormDraft,
+  type OptionWithCode,
   VariantDetail,
   targetAudienceCategory,
   leadGenForms,
@@ -30,10 +32,24 @@ const STORAGE_KEY = getStorageKey();
 const COUNTRY = 'DE';
 const SOURCE = 'li';
 const WEBHOOK_URL = 'https://cleverfunding.app.n8n.cloud/webhook-test/9b2b0503-c872-407f-8d53-e26a2a9232dd';
+const DEFAULT_LEADGEN_WEBHOOK_URL = 'https://cleverfunding.app.n8n.cloud/webhook-test/edaa879d-442a-4fcf-8fc1-dd9df5797efe';
+const LEADGEN_WEBHOOK_URL = process.env.NEXT_PUBLIC_LEADGEN_WEBHOOK_URL ?? DEFAULT_LEADGEN_WEBHOOK_URL;
+const LEADGEN_WEBHOOK_TOKEN = process.env.NEXT_PUBLIC_N8N_TOKEN ?? '';
 
 const DEFAULT_CREATIVES = 2;
 const DEFAULT_HEADLINES = 2;
 const DEFAULT_COPYS = 2;
+
+const createEmptyLeadGenDraft = (): LeadGenFormDraft => ({
+  phase: '',
+  imageId: '',
+  imageLink: '',
+  title: '',
+  detail: '',
+  thankYouMessage: '',
+  cta: '',
+  targetLink: ''
+});
 
 const createId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -74,6 +90,10 @@ function createDefaultFormState(): CampaignBuilderFormState {
   const defaultAudience = targetAudienceTypes[0];
   const defaultAudienceType = targetAudienceCategory[0];
   const defaultLeadGen = leadGenForms[0];
+  const defaultLeadGenDraft = {
+    ...createEmptyLeadGenDraft(),
+    phase: phases[0]?.label ?? ''
+  };
   return {
     phase: phases[0]?.label ?? '',
     format: adFormats[0]?.label ?? '',
@@ -87,6 +107,7 @@ function createDefaultFormState(): CampaignBuilderFormState {
     targetUrl: targetUrls[0] ?? '',
     leadGenForm: defaultLeadGen?.label ?? '',
     leadGenFormId: defaultLeadGen?.code ?? '',
+    leadGenFormDraft: defaultLeadGenDraft,
     country: COUNTRY,
     budget: 100,
     source: SOURCE,
@@ -136,6 +157,12 @@ export default function CampaignBuilderPage() {
   const [showErrors, setShowErrors] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitFeedback, setSubmitFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isLeadGenModalOpen, setIsLeadGenModalOpen] = useState(false);
+  const [leadGenDraft, setLeadGenDraft] = useState<LeadGenFormDraft>(formState.leadGenFormDraft);
+  const [isLeadGenSubmitting, setIsLeadGenSubmitting] = useState(false);
+  const [leadGenSubmitFeedback, setLeadGenSubmitFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [customLeadGenForms, setCustomLeadGenForms] = useState<OptionWithCode[]>([]);
+  const isLeadGenWebhookConfigured = Boolean(LEADGEN_WEBHOOK_URL);
 
   const targetAudienceCodeMap = useMemo(
     () => new Map(targetAudienceTypes.map(({ label, code }) => [label, code])),
@@ -145,10 +172,34 @@ export default function CampaignBuilderPage() {
     () => new Map(targetAudienceCategory.map(({ label, code }) => [label, code])),
     []
   );
+  const leadGenFormOptions = useMemo(() => [...leadGenForms, ...customLeadGenForms], [customLeadGenForms]);
   const leadGenFormIdMap = useMemo(
-    () => new Map(leadGenForms.map(({ label, code }) => [label, code])),
-    []
+    () => new Map(leadGenFormOptions.map(({ label, code }) => [label, code])),
+    [leadGenFormOptions]
   );
+
+  const updateLeadGenDraft = useCallback(
+    (updates: Partial<LeadGenFormDraft>) => {
+      setLeadGenDraft((prev) => {
+        const next = { ...prev, ...updates };
+        setFormState((prevState) => ({
+          ...prevState,
+          leadGenFormDraft: next
+        }));
+        return next;
+      });
+    },
+    [setFormState]
+  );
+
+  const resetLeadGenDraft = useCallback((draft?: LeadGenFormDraft) => {
+    const next = draft ?? createEmptyLeadGenDraft();
+    setLeadGenDraft(next);
+    setFormState((prevState) => ({
+      ...prevState,
+      leadGenFormDraft: next
+    }));
+  }, [setFormState]);
 
   useEffect(() => {
     const stored = loadState<CampaignBuilderFormState | null>(null, STORAGE_KEY);
@@ -176,7 +227,22 @@ export default function CampaignBuilderPage() {
       }
       merged.leadGenForm = merged.leadGenForm || leadGenForms[0]?.label || '';
       merged.leadGenFormId = leadGenFormIdMap.get(merged.leadGenForm) ?? leadGenForms[0]?.code ?? '';
+      merged.leadGenFormDraft = {
+        ...createEmptyLeadGenDraft(),
+        ...(merged.leadGenFormDraft ?? {}),
+        phase: merged.leadGenFormDraft?.phase || merged.phase || ''
+      };
+      if (
+        merged.leadGenForm &&
+        !leadGenForms.some((item) => item.label === merged.leadGenForm)
+      ) {
+        setCustomLeadGenForms((prev) => {
+          const filtered = prev.filter((item) => item.label !== merged.leadGenForm);
+          return [...filtered, { label: merged.leadGenForm, code: merged.leadGenFormId }];
+        });
+      }
       setFormState(merged);
+      setLeadGenDraft(merged.leadGenFormDraft);
     }
     setShowErrors(false);
     setHydrated(true);
@@ -189,6 +255,10 @@ export default function CampaignBuilderPage() {
     saveState(formState, STORAGE_KEY);
   }, [formState, hydrated]);
 
+  useEffect(() => {
+    setLeadGenDraft(formState.leadGenFormDraft);
+  }, [formState.leadGenFormDraft]);
+
   const validation = useMemo(() => validateForm(formState), [formState]);
 
   const totalVariants = formState.variants.length;
@@ -197,13 +267,17 @@ export default function CampaignBuilderPage() {
     return mediaTypes.find((item) => item.label === formState.assetType)?.code ?? '';
   }, [formState.assetType]);
 
-  const kombinatorikOutput = useMemo(() => {
-    if (!totalVariants) {
-      return '';
+  const leadGenInfo = formState.leadGenFormDraft;
+  const hasLeadGenInfo = useMemo(
+    () => Object.values(leadGenInfo).some((value) => Boolean(value && String(value).trim())),
+    [leadGenInfo]
+  );
+
+  useEffect(() => {
+    if (!leadGenDraft.phase && formState.phase) {
+      updateLeadGenDraft({ phase: formState.phase });
     }
-    const typeLabel = assetTypeCode ? `Asset Type: ${assetTypeCode}` : 'Asset Type: —';
-    return `Variante 1..${totalVariants} = (Headline, Copy, Asset URL). ${typeLabel}`;
-  }, [assetTypeCode, totalVariants]);
+  }, [formState.phase, leadGenDraft.phase, updateLeadGenDraft]);
 
   const variants = useMemo(() => generateVariants(formState), [formState]);
 
@@ -298,9 +372,11 @@ export default function CampaignBuilderPage() {
 
   const handleReset = () => {
     clearState(STORAGE_KEY);
-    setFormState(createDefaultFormState());
+    const defaultState = createDefaultFormState();
+    setFormState(defaultState);
     setShowErrors(false);
     setSubmitFeedback(null);
+    resetLeadGenDraft(defaultState.leadGenFormDraft);
   };
 
   const handleSubmit = async () => {
@@ -327,6 +403,7 @@ export default function CampaignBuilderPage() {
         targetUrl: formState.targetUrl,
         leadGenForm: formState.leadGenForm,
         leadGenFormId: formState.leadGenFormId,
+        leadGenFormDraft: formState.leadGenFormDraft,
         country: formState.country,
         source: formState.source,
         budget: formState.budget,
@@ -359,6 +436,112 @@ export default function CampaignBuilderPage() {
       setSubmitFeedback({ type: 'error', message });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleLeadGenSubmit = async () => {
+    setLeadGenSubmitFeedback(null);
+
+    if (!LEADGEN_WEBHOOK_URL) {
+      setLeadGenSubmitFeedback({ type: 'error', message: 'Kein Leadgen-WebHook konfiguriert.' });
+      return;
+    }
+
+    if (!leadGenDraft.title.trim()) {
+      setLeadGenSubmitFeedback({ type: 'error', message: 'Bitte einen Titel für das Leadgen-Formular angeben.' });
+      return;
+    }
+
+    if (!leadGenDraft.targetLink.trim()) {
+      setLeadGenSubmitFeedback({ type: 'error', message: 'Bitte einen Ziellink für das Leadgen-Formular angeben.' });
+      return;
+    }
+
+    if (!isValidUrl(leadGenDraft.targetLink)) {
+      setLeadGenSubmitFeedback({ type: 'error', message: 'Bitte einen gültigen Ziellink (https://) angeben.' });
+      return;
+    }
+
+    if (leadGenDraft.imageLink && !isValidUrl(leadGenDraft.imageLink)) {
+      setLeadGenSubmitFeedback({ type: 'error', message: 'Bitte einen gültigen Bildlink (https://) angeben.' });
+      return;
+    }
+
+    setIsLeadGenSubmitting(true);
+
+    const draftPayload: LeadGenFormDraft = {
+      ...leadGenDraft,
+      phase: leadGenDraft.phase || formState.phase
+    };
+
+    const payload = {
+      form: {
+        label: formState.leadGenForm,
+        id: formState.leadGenFormId
+      },
+      draft: draftPayload,
+      campaign: {
+        phase: formState.phase,
+        target: formState.target,
+        offer: formState.offer
+      }
+    };
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (LEADGEN_WEBHOOK_TOKEN) {
+        headers.Authorization = `Bearer ${LEADGEN_WEBHOOK_TOKEN}`;
+      }
+
+      const response = await fetch(LEADGEN_WEBHOOK_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Leadgen-Webhook antwortete mit einem Fehler.');
+      }
+
+      const result = await response.json().catch(() => ({}));
+      const newFormLabel =
+        result?.leadGenForm?.label ?? result?.label ?? formState.leadGenForm ?? `LeadGen ${Date.now()}`;
+      const newFormId =
+        result?.leadGenForm?.id ?? result?.code ?? formState.leadGenFormId ?? `${Date.now()}`;
+      const newDraft: LeadGenFormDraft = {
+        ...draftPayload,
+        ...(result?.leadGenFormDraft ?? {})
+      };
+
+      setCustomLeadGenForms((prev) => {
+        if (leadGenForms.some((item) => item.label === newFormLabel)) {
+          return prev;
+        }
+        const filtered = prev.filter((item) => item.label !== newFormLabel);
+        return [...filtered, { label: newFormLabel, code: newFormId }];
+      });
+
+      setFormState((prev) => ({
+        ...prev,
+        leadGenForm: newFormLabel,
+        leadGenFormId: newFormId,
+        leadGenFormDraft: newDraft
+      }));
+      setLeadGenDraft(newDraft);
+      setLeadGenSubmitFeedback({ type: 'success', message: 'Leadgen Form erfolgreich erstellt.' });
+
+      setTimeout(() => {
+        setIsLeadGenModalOpen(false);
+        setLeadGenSubmitFeedback(null);
+      }, 1500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Leadgen-Webhook.';
+      setLeadGenSubmitFeedback({ type: 'error', message });
+    } finally {
+      setIsLeadGenSubmitting(false);
     }
   };
 
@@ -428,7 +611,7 @@ export default function CampaignBuilderPage() {
       <SelectControl
         label="Lead Gen Form"
         value={formState.leadGenForm}
-        options={leadGenForms.map((item) => item.label)}
+        options={leadGenFormOptions.map((item) => item.label)}
         onChange={(value) => handleSelectChange('leadGenForm', value)}
         error={showErrors ? validation.formErrors.leadGenForm : undefined}
       />
@@ -634,11 +817,21 @@ export default function CampaignBuilderPage() {
               <dd className="font-medium text-slate-900">{assetTypeCode}</dd>
             </div>
           </dl>
-          <textarea
-            className="min-h-[160px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800"
-            value={kombinatorikOutput}
-            readOnly
-          />
+          <button
+            type="button"
+            onClick={() => {
+              resetLeadGenDraft({
+                ...formState.leadGenFormDraft,
+                phase: formState.phase
+              });
+              setLeadGenSubmitFeedback(null);
+              setIsLeadGenSubmitting(false);
+              setIsLeadGenModalOpen(true);
+            }}
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+          >
+            Leadgen Form erstellen
+          </button>
           <button
             type="button"
             onClick={handleSubmit}
@@ -648,16 +841,143 @@ export default function CampaignBuilderPage() {
             {isSubmitting ? 'Sendet…' : 'Abschicken'}
           </button>
           {submitFeedback ? (
-            <p
-              className={`text-xs ${submitFeedback.type === 'success' ? 'text-emerald-600' : 'text-rose-500'}`}
-            >
+            <p className={`text-xs ${submitFeedback.type === 'success' ? 'text-emerald-600' : 'text-rose-500'}`}>
               {submitFeedback.message}
             </p>
           ) : showErrors && validation.hasErrors ? (
             <p className="text-xs text-rose-500">Bitte alle Pflichtfelder und Asset-Links prüfen.</p>
           ) : null}
         </div>
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+          {hasLeadGenInfo ? (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lead Gen Form Details</h4>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <LeadGenInfoGrid info={leadGenInfo} />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </aside>
+
+      <Modal
+        open={isLeadGenModalOpen}
+        onClose={() => {
+          setLeadGenSubmitFeedback(null);
+          setIsLeadGenModalOpen(false);
+        }}
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <TextField
+            label="Phase"
+            value={leadGenDraft.phase}
+            onChange={(value) => updateLeadGenDraft({ phase: value })}
+          />
+          <TextField
+            label="LG Form Image ID"
+            value={leadGenDraft.imageId}
+            onChange={(value) => updateLeadGenDraft({ imageId: value })}
+          />
+          <TextField
+            label="LG Form Image Link"
+            value={leadGenDraft.imageLink}
+            onChange={(value) => updateLeadGenDraft({ imageLink: value })}
+            placeholder="https://"
+          />
+          <TextField
+            label="LG Form Title (60 Zeichen)"
+            value={leadGenDraft.title}
+            onChange={(value) => updateLeadGenDraft({ title: value })}
+          />
+          <TextField
+            label="LG Form Detail (160 Zeichen)"
+            value={leadGenDraft.detail}
+            onChange={(value) => updateLeadGenDraft({ detail: value })}
+            multiline
+            rows={3}
+          />
+          <TextField
+            label="LG Form Thank You Message (300 Zeichen)"
+            value={leadGenDraft.thankYouMessage}
+            onChange={(value) => updateLeadGenDraft({ thankYouMessage: value })}
+            multiline
+            rows={4}
+          />
+          <TextField
+            label="LGF CTA"
+            value={leadGenDraft.cta}
+            onChange={(value) => updateLeadGenDraft({ cta: value })}
+          />
+          <TextField
+            label="LGF Target Link"
+            value={leadGenDraft.targetLink}
+            onChange={(value) => updateLeadGenDraft({ targetLink: value })}
+            placeholder="https://"
+          />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
+          <button
+            type="button"
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+            onClick={() =>
+              resetLeadGenDraft({
+                ...createEmptyLeadGenDraft(),
+                phase: formState.phase
+              })
+            }
+          >
+            Zurücksetzen
+          </button>
+          {leadGenSubmitFeedback ? (
+            <span
+              className={`self-center text-xs ${
+                leadGenSubmitFeedback.type === 'success' ? 'text-emerald-600' : 'text-rose-500'
+              }`}
+            >
+              {leadGenSubmitFeedback.message}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-400"
+            onClick={handleLeadGenSubmit}
+            disabled={isLeadGenSubmitting || !isLeadGenWebhookConfigured}
+          >
+            {isLeadGenSubmitting ? 'Sendet…' : 'Leadgen Form senden'}
+          </button>
+          <button
+            type="button"
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+            onClick={() => {
+              setLeadGenSubmitFeedback(null);
+              setIsLeadGenModalOpen(false);
+            }}
+          >
+            Schließen
+          </button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+      <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-card">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900">Leadgen Form erstellen</h3>
+          <button
+            type="button"
+            className="text-sm font-medium text-slate-500 transition hover:text-slate-900"
+            onClick={onClose}
+          >
+            Schließen
+          </button>
+        </div>
+        <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-2">{children}</div>
+      </div>
     </div>
   );
 }
@@ -741,6 +1061,7 @@ function generateVariants(state: CampaignBuilderFormState): VariantRow[] {
     targetUrl: state.targetUrl,
     leadGenForm: state.leadGenForm,
     leadGenFormId: state.leadGenFormId,
+    leadGenFormDraft: state.leadGenFormDraft,
     country: state.country,
     source: state.source,
     budget: state.budget
@@ -817,7 +1138,9 @@ function TextField({
   onChange,
   error,
   helper,
-  placeholder
+  placeholder,
+  multiline,
+  rows
 }: {
   label: string;
   value: string;
@@ -825,18 +1148,32 @@ function TextField({
   error?: string;
   helper?: string;
   placeholder?: string;
+  multiline?: boolean;
+  rows?: number;
 }) {
   return (
     <label className="flex flex-col gap-2 md:col-span-2">
       <span className="text-sm font-medium text-slate-700">{label}</span>
-      <input
-        className={`rounded-xl border bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 ${
-          error ? 'border-rose-400' : 'border-slate-200'
-        }`}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      {multiline ? (
+        <textarea
+          className={`min-h-[96px] rounded-xl border bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 ${
+            error ? 'border-rose-400' : 'border-slate-200'
+          }`}
+          value={value}
+          placeholder={placeholder}
+          rows={rows}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : (
+        <input
+          className={`rounded-xl border bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 ${
+            error ? 'border-rose-400' : 'border-slate-200'
+          }`}
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
       {helper ? <span className="text-xs text-slate-500">{helper}</span> : null}
       {error ? <span className="text-xs text-rose-500">{error}</span> : null}
     </label>
@@ -919,5 +1256,41 @@ function VariantMetaField({
       <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
       <span className="text-sm text-slate-800">{content ?? '—'}</span>
     </div>
+  );
+}
+
+function LeadGenInfoGrid({ info }: { info: LeadGenFormDraft }) {
+  const entries = [
+    { label: 'Phase', value: info.phase },
+    { label: 'Image ID', value: info.imageId },
+    { label: 'Image Link', value: info.imageLink },
+    { label: 'Title', value: info.title },
+    { label: 'Detail', value: info.detail },
+    { label: 'Thank You Message', value: info.thankYouMessage },
+    { label: 'CTA', value: info.cta },
+    { label: 'Target Link', value: info.targetLink }
+  ];
+
+  return (
+    <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {entries.map(({ label, value }) => (
+        <div key={label} className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+          <dd className="text-sm text-slate-800 break-words">
+            {value && String(value).trim() ? (
+              label.toLowerCase().includes('link') ? (
+                <a href={value} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                  {value}
+                </a>
+              ) : (
+                value
+              )
+            ) : (
+              '—'
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
