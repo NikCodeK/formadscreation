@@ -34,7 +34,8 @@ const SOURCE = 'li';
 const WEBHOOK_URL = 'https://cleverfunding.app.n8n.cloud/webhook-test/9b2b0503-c872-407f-8d53-e26a2a9232dd';
 const DEFAULT_LEADGEN_WEBHOOK_URL = 'https://cleverfunding.app.n8n.cloud/webhook-test/edaa879d-442a-4fcf-8fc1-dd9df5797efe';
 const LEADGEN_WEBHOOK_URL = process.env.NEXT_PUBLIC_LEADGEN_WEBHOOK_URL ?? DEFAULT_LEADGEN_WEBHOOK_URL;
-const LEADGEN_WEBHOOK_TOKEN = process.env.NEXT_PUBLIC_N8N_TOKEN ?? '';
+const DEFAULT_LEADGEN_WEBHOOK_TOKEN = 'n8n_ingest_7e2f4a913c8d4fb1b1d51b64b83a92c1';
+const LEADGEN_WEBHOOK_TOKEN = process.env.NEXT_PUBLIC_N8N_TOKEN ?? DEFAULT_LEADGEN_WEBHOOK_TOKEN;
 
 const DEFAULT_CREATIVES = 2;
 const DEFAULT_HEADLINES = 2;
