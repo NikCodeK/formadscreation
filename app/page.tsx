@@ -590,27 +590,96 @@ export default function CampaignBuilderPage() {
       }
 
       const result = await response.json().catch(() => ({}));
-      const normalizedStatus =
-        typeof result?.status === 'string' ? result.status.trim().toLowerCase() : null;
-      const isSuccess =
-        normalizedStatus === 'ok' ||
-        normalizedStatus === 'success' ||
-        normalizedStatus === 'created' ||
-        Boolean(result?.received) ||
-        Boolean(result?.success);
-      if (!isSuccess) {
-        const apiMessage =
-          typeof result?.message === 'string'
-            ? result.message
-            : normalizedStatus
-              ? `Leadgen-Webhook Antwort: ${normalizedStatus}`
-              : 'Leadgen-Webhook meldete keinen Erfolg.';
-        throw new Error(apiMessage);
+
+      const interpretIngestResponse = (
+        payload: unknown
+      ): { success: boolean; message?: string; metaStatus?: string } => {
+        const inspectables = Array.isArray(payload) ? payload : [payload];
+        let fallbackMessage: string | undefined;
+        let fallbackStatus: string | undefined;
+
+        for (const item of inspectables) {
+          if (!item || typeof item !== 'object') {
+            continue;
+          }
+          const data = item as Record<string, unknown>;
+          const body =
+            data.body && typeof data.body === 'object' && data.body !== null
+              ? (data.body as Record<string, unknown>)
+              : data;
+
+          const dataStatus = data['status'];
+          const dataStatusCode = data['statusCode'];
+          const bodyStatus = (body as Record<string, unknown>)['status'];
+          const bodyStatusCode = (body as Record<string, unknown>)['statusCode'];
+
+          const rawStatus =
+            (typeof dataStatus === 'string' && dataStatus) ||
+            (typeof dataStatusCode === 'string' && dataStatusCode) ||
+            (typeof dataStatusCode === 'number' && String(dataStatusCode)) ||
+            (typeof bodyStatus === 'string' && bodyStatus) ||
+            (typeof bodyStatusCode === 'string' && bodyStatusCode) ||
+            (typeof bodyStatusCode === 'number' && String(bodyStatusCode)) ||
+            undefined;
+          if (rawStatus && !fallbackStatus) {
+            fallbackStatus = rawStatus;
+          }
+
+          const bodyMessage = (body as Record<string, unknown>)['message'];
+          const dataMessage = data['message'];
+          const rawMessage =
+            (typeof bodyMessage === 'string' && bodyMessage.trim()) ||
+            (typeof dataMessage === 'string' && dataMessage.trim()) ||
+            undefined;
+          if (rawMessage && !fallbackMessage) {
+            fallbackMessage = rawMessage;
+          }
+
+          const successFlags = [
+            (body as Record<string, unknown>)['received'],
+            data['received'],
+            (body as Record<string, unknown>)['success'],
+            data['success']
+          ].map((value) => {
+            if (value === true) return true;
+            if (typeof value === 'string') {
+              const normalized = value.trim().toLowerCase();
+              return normalized === 'true' || normalized === 'ok' || normalized === 'success' || normalized === 'created';
+            }
+            return false;
+          });
+
+          if (successFlags.some(Boolean)) {
+            return { success: true, message: rawMessage, metaStatus: rawStatus };
+          }
+
+          const normalizedStatus = rawStatus?.trim().toLowerCase();
+          if (normalizedStatus && ['ok', 'success', 'created'].includes(normalizedStatus)) {
+            return { success: true, message: rawMessage, metaStatus: rawStatus };
+          }
+
+          if (typeof dataStatusCode === 'number' && dataStatusCode >= 200 && dataStatusCode < 300) {
+            return { success: true, message: rawMessage, metaStatus: rawStatus };
+          }
+        }
+
+        return { success: false, message: fallbackMessage, metaStatus: fallbackStatus };
+      };
+
+      const interpreted = interpretIngestResponse(result);
+      if (!interpreted.success) {
+        const statusSuffix = interpreted.metaStatus ? ` (${interpreted.metaStatus})` : '';
+        const message =
+          interpreted.message ??
+          (Array.isArray(result) && result.length === 0
+            ? 'Leadgen-Webhook lieferte keine Daten.'
+            : 'Leadgen-Webhook meldete keinen Erfolg.');
+        throw new Error(`${message}${statusSuffix}`);
       }
 
       const successMessage =
-        typeof result?.message === 'string' && result.message.trim()
-          ? result.message
+        interpreted.message && interpreted.message.trim()
+          ? interpreted.message
           : 'Leadgen Form erfolgreich erstellt.';
 
       const newFormLabel =
