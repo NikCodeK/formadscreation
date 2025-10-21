@@ -489,22 +489,30 @@ export default function CampaignBuilderPage() {
     };
 
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
+      const sendLeadGenRequest = (url: string) => {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        if (LEADGEN_WEBHOOK_TOKEN) {
+          headers.Authorization = `Bearer ${LEADGEN_WEBHOOK_TOKEN}`;
+        }
+        return fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
       };
-      if (LEADGEN_WEBHOOK_TOKEN) {
-        headers.Authorization = `Bearer ${LEADGEN_WEBHOOK_TOKEN}`;
-      }
 
-      const response = await fetch(LEADGEN_WEBHOOK_URL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload)
-      });
+      let response = await sendLeadGenRequest(LEADGEN_WEBHOOK_URL);
+      if (response.status === 404 && LEADGEN_WEBHOOK_URL.includes('/webhook-test/')) {
+        const fallbackUrl = LEADGEN_WEBHOOK_URL.replace('/webhook-test/', '/webhook/');
+        response = await sendLeadGenRequest(fallbackUrl);
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(errorText || 'Leadgen-Webhook antwortete mit einem Fehler.');
+        const statusInfo = response.status ? ` (Status ${response.status})` : '';
+        throw new Error(errorText || `Leadgen-Webhook antwortete mit einem Fehler${statusInfo}.`);
       }
 
       const result = await response.json().catch(() => ({}));
