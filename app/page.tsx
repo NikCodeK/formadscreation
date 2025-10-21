@@ -191,8 +191,12 @@ export default function CampaignBuilderPage() {
       };
     }
     if (leadGenStatus === 'success') {
+      const message =
+        typeof leadGenSubmitFeedback?.message === 'string'
+          ? leadGenSubmitFeedback.message
+          : 'Successfully created';
       return {
-        label: 'Successfully created',
+        label: message,
         wrapper: 'border-emerald-200 bg-emerald-50 text-emerald-600',
         dot: 'bg-emerald-500'
       };
@@ -586,6 +590,29 @@ export default function CampaignBuilderPage() {
       }
 
       const result = await response.json().catch(() => ({}));
+      const normalizedStatus =
+        typeof result?.status === 'string' ? result.status.trim().toLowerCase() : null;
+      const isSuccess =
+        normalizedStatus === 'ok' ||
+        normalizedStatus === 'success' ||
+        normalizedStatus === 'created' ||
+        Boolean(result?.received) ||
+        Boolean(result?.success);
+      if (!isSuccess) {
+        const apiMessage =
+          typeof result?.message === 'string'
+            ? result.message
+            : normalizedStatus
+              ? `Leadgen-Webhook Antwort: ${normalizedStatus}`
+              : 'Leadgen-Webhook meldete keinen Erfolg.';
+        throw new Error(apiMessage);
+      }
+
+      const successMessage =
+        typeof result?.message === 'string' && result.message.trim()
+          ? result.message
+          : 'Leadgen Form erfolgreich erstellt.';
+
       const newFormLabel =
         result?.leadGenForm?.label ?? result?.label ?? formState.leadGenForm ?? `LeadGen ${Date.now()}`;
       const newFormId =
@@ -611,7 +638,7 @@ export default function CampaignBuilderPage() {
       }));
       setLeadGenDraft(newDraft);
       setLeadGenStatus('success');
-      setLeadGenSubmitFeedback({ type: 'success', message: 'Leadgen Form erfolgreich erstellt.' });
+      setLeadGenSubmitFeedback({ type: 'success', message: successMessage });
 
       setTimeout(() => {
         setIsLeadGenModalOpen(false);
