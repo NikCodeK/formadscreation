@@ -25,10 +25,8 @@ import {
   targetUrls,
   VariantRow
 } from '@/lib/types';
-import { clearState, getStorageKey, loadState, saveState } from '@/lib/storage';
 import { Section } from '@/components/Section';
 
-const STORAGE_KEY = getStorageKey();
 const COUNTRY = 'DE';
 const SOURCE = 'li';
 const WEBHOOK_URL = 'https://cleverfunding.app.n8n.cloud/webhook-test/9b2b0503-c872-407f-8d53-e26a2a9232dd';
@@ -156,7 +154,6 @@ interface ValidationResult {
 
 export default function CampaignBuilderPage() {
   const [formState, setFormState] = useState<CampaignBuilderFormState>(() => createDefaultFormState());
-  const [hydrated, setHydrated] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitFeedback, setSubmitFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -245,58 +242,8 @@ export default function CampaignBuilderPage() {
   }, [setFormState]);
 
   useEffect(() => {
-    const stored = loadState<CampaignBuilderFormState | null>(null, STORAGE_KEY);
-    if (stored) {
-      const mergedBase = createDefaultFormState();
-      const merged: CampaignBuilderFormState = {
-        ...mergedBase,
-        ...stored,
-        country: COUNTRY,
-        source: SOURCE
-      };
-      const total = merged.creatives * merged.headlines * merged.copys;
-      merged.variants = resizeVariantList(stored.variants ?? merged.variants, total);
-      merged.targetAudienceCode = targetAudienceCodeMap.get(merged.targetAudience) ?? '';
-      merged.targetAudienceTypeCode = targetAudienceTypeCodeMap.get(merged.targetAudienceType) ?? '';
-      if (!merged.targetAudienceType) {
-        merged.targetAudienceType = targetAudienceCategory[0]?.label ?? '';
-        merged.targetAudienceTypeCode = targetAudienceCategory[0]?.code ?? '';
-      } else {
-        merged.targetAudienceTypeCode =
-          targetAudienceTypeCodeMap.get(merged.targetAudienceType) ?? merged.targetAudienceTypeCode ?? '';
-      }
-      if (!merged.targetUrl) {
-        merged.targetUrl = targetUrls[0] ?? '';
-      }
-      merged.leadGenForm = merged.leadGenForm || leadGenForms[0]?.label || '';
-      merged.leadGenFormId = leadGenFormIdMap.get(merged.leadGenForm) ?? leadGenForms[0]?.code ?? '';
-      merged.leadGenFormDraft = {
-        ...createEmptyLeadGenDraft(),
-        ...(merged.leadGenFormDraft ?? {}),
-        phase: merged.leadGenFormDraft?.phase || merged.phase || ''
-      };
-      if (
-        merged.leadGenForm &&
-        !leadGenForms.some((item) => item.label === merged.leadGenForm)
-      ) {
-        setCustomLeadGenForms((prev) => {
-          const filtered = prev.filter((item) => item.label !== merged.leadGenForm);
-          return [...filtered, { label: merged.leadGenForm, code: merged.leadGenFormId }];
-        });
-      }
-      setFormState(merged);
-      setLeadGenDraft(merged.leadGenFormDraft);
-    }
     setShowErrors(false);
-    setHydrated(true);
-  }, [targetAudienceCodeMap, targetAudienceTypeCodeMap, leadGenFormIdMap]);
-
-  useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
-    saveState(formState, STORAGE_KEY);
-  }, [formState, hydrated]);
+  }, []);
 
   useEffect(() => {
     setLeadGenDraft(formState.leadGenFormDraft);
@@ -421,7 +368,6 @@ export default function CampaignBuilderPage() {
   };
 
   const handleReset = () => {
-    clearState(STORAGE_KEY);
     const defaultState = createDefaultFormState();
     setFormState(defaultState);
     setShowErrors(false);
