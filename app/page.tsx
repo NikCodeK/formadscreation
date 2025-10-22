@@ -37,6 +37,14 @@ const LEADGEN_WEBHOOK_TOKEN = process.env.NEXT_PUBLIC_N8N_TOKEN ?? DEFAULT_LEADG
 const DEFAULT_LEADGEN_WEBHOOK_METHOD = 'POST';
 const LEADGEN_WEBHOOK_METHOD = (process.env.NEXT_PUBLIC_LEADGEN_WEBHOOK_METHOD ?? DEFAULT_LEADGEN_WEBHOOK_METHOD).toUpperCase();
 
+const LEADGEN_CTA_OPTIONS: string[] = [
+  'VISIT_COMPANY_WEBSITE',
+  'LEARN_MORE',
+  'VIEW_NOW',
+  'DOWNLOAD_NOW',
+  'TRY_NOW'
+];
+
 const DEFAULT_CREATIVES = 2;
 const DEFAULT_HEADLINES = 2;
 const DEFAULT_COPYS = 2;
@@ -48,7 +56,7 @@ const createEmptyLeadGenDraft = (): LeadGenFormDraft => ({
   title: '',
   detail: '',
   thankYouMessage: '',
-  cta: '',
+  cta: LEADGEN_CTA_OPTIONS[0] ?? '',
   targetLink: ''
 });
 
@@ -1101,9 +1109,10 @@ export default function CampaignBuilderPage() {
             multiline
             rows={4}
           />
-          <TextField
+          <SelectControl
             label="LGF CTA"
             value={leadGenDraft.cta}
+            options={LEADGEN_CTA_OPTIONS as unknown as string[]}
             onChange={(value) => updateLeadGenDraft({ cta: value })}
           />
           <TextField
