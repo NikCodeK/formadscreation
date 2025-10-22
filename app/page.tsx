@@ -716,9 +716,7 @@ export default function CampaignBuilderPage() {
       }
 
       const successMessage =
-        interpreted.message && interpreted.message.trim()
-          ? interpreted.message
-          : 'Leadgen Form erfolgreich erstellt.';
+        interpreted.message && interpreted.message.trim() ? interpreted.message : 'Workflow has succeed';
 
       const resolvedResult =
         Array.isArray(parsedBody)
