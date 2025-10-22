@@ -535,7 +535,8 @@ export default function CampaignBuilderPage() {
         phase: formState.phase,
         target: formState.target,
         offer: formState.offer
-      }
+      },
+      success: true
     };
 
     try {
@@ -691,6 +692,11 @@ export default function CampaignBuilderPage() {
           if (typeof dataStatusCode === 'number' && dataStatusCode >= 200 && dataStatusCode < 300) {
             return { success: true, message: rawMessage, metaStatus: rawStatus };
           }
+        }
+
+        const normalizedFallbackMessage = fallbackMessage?.trim().toLowerCase();
+        if (normalizedFallbackMessage && normalizedFallbackMessage.includes('workflow was started')) {
+          return { success: true, message: fallbackMessage, metaStatus: fallbackStatus };
         }
 
         return { success: false, message: fallbackMessage, metaStatus: fallbackStatus };
